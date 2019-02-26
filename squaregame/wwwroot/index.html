@@ -1,0 +1,185 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <script type="text/javascript" src="lib/signalr/dist/browser/signalr.min.js"></script>
+    <style>
+        canvas 
+        {
+            padding: 0;
+            margin: auto;
+            display: block;
+            width: 800px;
+            height:800px;
+        }
+    </style>
+    <title>SquareGame</title>
+</head>
+<body>
+    <canvas id="canvas" width="800" height="800"></canvas>
+    <script>
+        // Build canvas
+        var canvas = document.querySelector('canvas');
+        var context = canvas.getContext('2d');
+
+        var squares = [], dots = [], rects = [];
+
+        // Draw dots
+        var dot = {w:10, h:10}, x = 200, y = 200;
+        context.fillStyle = "black";
+        i = 0;
+        while (x < 600)
+        {
+            var columns = [];
+            while (y < 600)
+            {
+                context.fillRect(x, y, dot.w, dot.h);
+                columns.push({x:x, y:y, width:dot.w, height:dot.h});
+
+                y+=50;
+            }
+            dots.push(columns);
+
+            x+=50;
+            y = 200;
+        }
+
+        // Create vertical rectangles
+        var c = 0, r = 0, rect;
+        while (c < dots.length)
+        {
+            while (r < dots[c].length - 1)
+            {
+                rect = {x:dots[c][r].x, y:dots[c][r].y + dot.h, width:dot.w, height:40, clicked:false};
+                rects.push(rect);
+                r++;
+            }
+            c++;
+            r=0;
+        }
+
+        console.log("Rects vertical: " + rects.length);
+
+        // Create horizontal rects
+        c = 0, r = 0;
+        while (r < dots[c].length)
+        {
+            while (c < dots.length - 1)
+            {
+                rect = {x:dots[c][r].x + dot.w, y:dots[c][r].y, width:40, height:dot.h, clicked:false};
+                rects.push(rect);
+                c++;
+            }
+            r++;
+            c = 0;
+        }
+
+        console.log("Rects horizontal: " + rects.length);
+
+
+        // Create squares
+        c = 0, r = 0;
+        while (c < dots.length - 1)
+        {
+            while (r < dots[c].length - 1)
+            {
+                var topSide, botSide, leftSide, rigthSide;
+                topSide   = {x:dots[c][r].x + dot.w, y:dots[c][r].y, width:40, height:dot.h};
+                botSide   = {x:dots[c][r].x + dot.w, y:dots[c][r + 1].y, width:40, height:dot.h};
+                leftSide  = {x:dots[c][r].x, y:dots[c][r].y + dot.h, width:dot.w, height:40};
+                rightSide = {x:dots[c+1][r].x, y:dots[c+1][r].y + dot.h, width:dot.w, height:40};
+
+                squares.push({top:topSide, bot:botSide, left:leftSide, right:rightSide, filled:0, claimed:false});
+                r++;
+            }
+            c++;
+            r = 0;
+        }
+
+        console.log("Squares: " + squares);
+        var updateSquare = function(i) {
+            var square, x = 0;
+
+            while (square = squares[x])
+            {
+                if ((square.top.x == rects[i].x && square.top.y == rects[i].y && square.top.width == rects[i].width && square.top.height == rects[i].height)||
+                     (square.bot.x == rects[i].x && square.bot.y == rects[i].y && square.bot.width == rects[i].width && square.bot.height == rects[i].height)||
+                     (square.left.x == rects[i].x && square.left.y == rects[i].y && square.left.width == rects[i].width && square.left.height == rects[i].height)||
+                     (square.right.x == rects[i].x && square.right.y == rects[i].y && square.right.width == rects[i].width && square.right.height == rects[i].height)){
+
+                    squares[x].filled += 1;
+
+                    if(squares[x].filled == 4)
+                    {
+                        squares[x].claimed = true;
+                        console.log("Claimed square");
+                    }
+                }
+
+                x++;
+            }
+
+        }
+
+        var updateBoard = function(i) {
+            context.beginPath();
+            context.rect(rects[i].x, rects[i].y, rects[i].width, rects[i].height);
+            context.fillStyle = "black";
+            context.fill();
+            rects[i].clicked = true;
+            updateSquare(i);
+        }
+
+        canvas.onmousemove = function(e) {
+            var rect = this.getBoundingClientRect(),
+            x = e.clientX - rect.left,
+            y = e.clientY - rect.top,
+            i = 0, r;
+
+            while(r = rects[i++]) {
+                context.beginPath();
+                context.rect(r.x, r.y, r.width, r.height);
+                if (!r.clicked)
+                {
+                    context.fillStyle = (context.isPointInPath(x, y)) ? "#ADD8E6" : "white";
+                    context.fill();
+                }
+            }
+        };
+
+        canvas.onclick = function(e) {
+            var rect = this.getBoundingClientRect(),
+            x = e.clientX - rect.left,
+            y = e.clientY - rect.top,
+            i = 0, r;
+
+            while(r = rects[i]) {
+                if (!r.clicked) {
+                    context.beginPath();
+                    context.rect(r.x, r.y, r.width, r.height);
+                    if(context.isPointInPath(x, y))
+                    {
+                        context.fillStyle = "black";
+                        context.fill();
+                        rects[i].clicked = true;
+
+                        updateSquare(i);
+
+                        connection.invoke("ClickSide", "a", x, y, i);
+                    }
+                }
+                i++
+            }
+        };
+
+        var connection = new signalR.HubConnectionBuilder().withUrl("/gameHub").build();
+        connection.on('UpdateBoard', function (user, x, y, i) {
+            console.log("User: " + user + " X: " + x + " Y: " + y);
+
+            updateBoard(i);
+        });
+
+        connection.start();
+    </script>
+</body>
+</html>
